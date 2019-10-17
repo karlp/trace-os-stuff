@@ -24,6 +24,18 @@ void frt_enter(void)
 	x |= ((last_enter - prev) & 0xffffff);
 	trace_send32(STIM, x);
 }
+
+
+/* in your task setup */
+	xTaskCreate(task_1, "profilign", configMINIMAL_STACK_SIZE, &state, tskIDLE_PRIORITY + 2, &xHandle);
+	vTaskSetApplicationTaskTag(xHandle, ++threadid);
+	xTaskCreate(task_2, "is_rad", configMINIMAL_STACK_SIZE, &state, tskIDLE_PRIORITY + 1, &xHandle);
+	vTaskSetApplicationTaskTag(xHandle, ++threadid);
+	xTaskCreate(task_3, "everybody", configMINIMAL_STACK_SIZE, &state, tskIDLE_PRIORITY + 1, &xHandle);
+	vTaskSetApplicationTaskTag(xHandle, ++threadid);
+	xTaskCreate(task_4, "should_use_it", configMINIMAL_STACK_SIZE, &state, tskIDLE_PRIORITY + 1, &xHandle);
+	vTaskSetApplicationTaskTag(xHandle, ++threadid);
+
 ```
 
 ## Example output
