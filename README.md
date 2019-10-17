@@ -5,6 +5,11 @@ Uses libswo from http://git.zapb.de/libswo.git/tree/
 Expects to have a freertos trace macro along the lines of
 
 ```
+/* in your freertosconfig.h */
+#define traceTASK_SWITCHED_IN() frt_enter()
+
+
+/* elsewhere */
 #define STIM 31
 static inline int get_tid(void) {
 	return xTaskGetApplicationTaskTagFromISR(NULL);
