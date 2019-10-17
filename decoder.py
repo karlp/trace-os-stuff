@@ -181,7 +181,7 @@ class Decoder:
         return True
 
 class KTask():
-    def __init__(self, tag):
+    def __init__(self, tag, opts={}):
         self.tag = tag
         self.invoke_cnt = 0
         self.invoke_cnt_recent = 0
@@ -189,6 +189,7 @@ class KTask():
         self.time_recent = 0
         # hoho, we could do things like stddev stuff of last x calls?
         self.times_recent = []
+        self.opts = opts
 
     def add(self, tval):
         self.invoke_cnt += 1
@@ -211,7 +212,12 @@ class KTask():
             avg = self.time_total / self.invoke_cnt
         if self.invoke_cnt_recent:
             ravg = self.time_recent / self.invoke_cnt_recent
-        return f"Task<{self.tag}>(cnt:{self.invoke_cnt:>8}/{self.invoke_cnt_recent:>5}\tavg:{avg:>10.2f}\travg:{ravg:>10.2f})"
+        if self.opts.wallclock:
+            avg /= self.opts.nominal_clock / 1000
+            ravg /= self.opts.nominal_clock / 1000
+            return f"Task<{self.tag}>(cnt:{self.invoke_cnt:>8}/{self.invoke_cnt_recent:>5} avg:{avg:>5.2f}ms ravg:{ravg:>5.2f}ms)"
+        else:
+            return f"Task<{self.tag}>(cnt:{self.invoke_cnt:>8}/{self.invoke_cnt_recent:>5} avg:{avg:>10.2f} ravg:{ravg:>10.2f})"
 
 class KFreeRtosDecoder(Decoder):
     """
@@ -237,7 +243,7 @@ class KFreeRtosDecoder(Decoder):
         ts = packet.get_value() & 0xffffff
         task = self.tasks.get(tag, None)
         if not task:
-            task = KTask(tag)
+            task = KTask(tag, opts)
             self.tasks[tag] = task
         task.add(ts)
 
@@ -248,10 +254,16 @@ class KFreeRtosDecoder(Decoder):
         print(f"monitoring saw {len(self.tasks)}")
         sum_time_total = sum([t.time_total for tag,t in self.tasks.items()])
         sum_time_recent = sum([t.time_recent for tag,t in self.tasks.items()])
+        if self.opts.wallclock:
+            sum_time_total /= self.opts.nominal_clock
+            sum_time_recent /= self.opts.nominal_clock
         print(f"total time: {sum_time_total} recent time: {sum_time_recent}")
         for tag,t in self.tasks.items():
             pct_total = t.time_total / sum_time_total * 100
             pct_recent = t.time_recent / sum_time_recent * 100
+            if self.opts.wallclock:
+                pct_total /= self.opts.nominal_clock
+                pct_recent /= self.opts.nominal_clock
             print(f"{t} occupied recent: {pct_recent:>5.2f}% all time: {pct_total:>5.2f}%")
             t.reset()
 
@@ -269,6 +281,8 @@ if __name__ == '__main__':
     ap.add_argument("--address", "-a", type=int, default=-1, help="which channels to print, -1 for all")
     ap.add_argument("--follow", "-f", action="store_true", help="Seek to the 1024 bytes before the end of file first!", default=False)
     ap.add_argument("--report_interval", type=int, default=1000, help="How often to dump summary reporting")
+    ap.add_argument("--nominal_clock", type=float, default=32e6, help="nominal clock, allows converting ticks to pseudo realistic wall clock times")
+    ap.add_argument("--wallclock", "-w", action="store_true", help="divide all ticks by nominal clock to get wall clock results")
     opts = ap.parse_args()
 
     try:
