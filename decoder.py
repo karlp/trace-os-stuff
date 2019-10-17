@@ -1,5 +1,7 @@
 ##
 ## This file is part of the libswo project.
+## Hacked by karl to do some task stuff.
+## stupid gpl3
 ##
 ## Copyright (C) 2017 Marc Schink <swo-dev@marcschink.de>
 ##
@@ -17,15 +19,19 @@
 ## along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ##
 
+import argparse
+import os
 import sys
+import time
 import swopy
 
 BUFFER_SIZE = 1024
 
 class Decoder:
-    def __init__(self, buffer_size):
+    def __init__(self, buffer_size, opts):
         self._ctx = swopy.Context(buffer_size)
         self._ctx.set_callback(self._packet_callback)
+        self.opts = opts
 
     def feed(self, data):
         self._ctx.feed(data)
@@ -85,12 +91,14 @@ class Decoder:
             packet.get_value()))
 
     def _handle_inst_packet(self, packet):
-        print('Instrumentation (address = %u, value = %x, size = %u bytes)' % (
-            packet.get_address(), packet.get_value(), packet.get_size() - 1))
+        if self.opts.address < 0 or self.opts.address == packet.get_address():
+            print('Instrumentation (address = %u, value = %x, size = %u bytes)' % (
+                packet.get_address(), packet.get_value(), packet.get_size() - 1))
 
     def _handle_hw_packet(self, packet):
-        print('Hardware source (address = %u, value = %x, size = %u bytes)' % (
-            packet.get_address(), packet.get_value(), packet.get_size() - 1))
+        if self.opts.address < 0 or self.opts.address == packet.get_address():
+            print('Hardware source (address = %u, value = %x, size = %u bytes)' % (
+                packet.get_address(), packet.get_value(), packet.get_size() - 1))
 
     def _handle_evtcnt_packet(self, packet):
         print('Event counter (CPI = %u, exc = %u, sleep = %u, LSU = %u, '
@@ -170,19 +178,33 @@ class Decoder:
         return True
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print('Usage: %s <filename>' % sys.argv[0], file=sys.stderr)
-        sys.exit(1)
+    ap = argparse.ArgumentParser()
+    ap.add_argument('file', type=argparse.FileType('rb', 0), help="swo binary output file to parse", default="-")
+    ap.add_argument("--address", "-a", type=int, default=-1, help="which channels to print, -1 for all")
+    ap.add_argument("--follow", "-f", action="store_true", help="Seek to the 1024 bytes before the end of file first!", default=False)
+    opts = ap.parse_args()
 
     try:
-        with open(sys.argv[1], 'rb') as input_file:
-            decoder = Decoder(2 * BUFFER_SIZE)
+        with opts.file as input_file:
+            decoder = Decoder(2 * BUFFER_SIZE, opts)
+            if opts.follow:
+                input_file.seek(0, os.SEEK_END)
+                size = input_file.tell()
+                if size > 1024:
+                    print("Jumping to the near the end")
+                    input_file.seek(-1024, os.SEEK_END)
+                else:
+                    input_file.seek(0)
 
             while True:
                 data = input_file.read(BUFFER_SIZE)
 
                 if len(data) == 0:
-                    break
+                    # Wait for more...
+                    if opts.follow:
+                        time.sleep(0.5)
+                    else:
+                        break
 
                 try:
                     decoder.feed(data)
