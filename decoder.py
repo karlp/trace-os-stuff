@@ -27,8 +27,11 @@ import swopy
 
 BUFFER_SIZE = 1024
 
+def millis():
+    return int(round(time.time() * 1000))
+
 class Decoder:
-    def __init__(self, buffer_size, opts):
+    def __init__(self, opts, buffer_size=BUFFER_SIZE*2):
         self._ctx = swopy.Context(buffer_size)
         self._ctx.set_callback(self._packet_callback)
         self.opts = opts
@@ -177,16 +180,100 @@ class Decoder:
 
         return True
 
+class KTask():
+    def __init__(self, tag):
+        self.tag = tag
+        self.invoke_cnt = 0
+        self.invoke_cnt_recent = 0
+        self.time_total = 0
+        self.time_recent = 0
+        # hoho, we could do things like stddev stuff of last x calls?
+        self.times_recent = []
+
+    def add(self, tval):
+        self.invoke_cnt += 1
+        self.invoke_cnt_recent += 1
+        self.time_total += tval
+        self.time_recent += tval
+        self.times_recent.append(tval)
+        self.times_recent = self.times_recent[-100:]
+
+    def reset(self):
+        self.invoke_cnt_recent = 0
+        self.time_recent = 0
+        # um, for consistency, we should junk the moving averge too, right?
+        self.times_recent = []
+
+    def __repr__(self):
+        avg = 0.0
+        ravg = 0.0
+        if self.invoke_cnt:
+            avg = self.time_total / self.invoke_cnt
+        if self.invoke_cnt_recent:
+            ravg = self.time_recent / self.invoke_cnt_recent
+        return f"Task<{self.tag}>(cnt:{self.invoke_cnt:>8}/{self.invoke_cnt_recent:>5}\tavg:{avg:>10.2f}\travg:{ravg:>10.2f})"
+
+class KFreeRtosDecoder(Decoder):
+    """
+    given a stream of taskids+time deltas, construct a view of
+    "tasks, counts, %of totals" sort of thing.
+    """
+    def __init__(self, opts):
+        # python3 baby
+        super().__init__(opts)
+        self.tasks = {}
+        self.last_report = millis()
+
+    def _handle_inst_packet(self, packet):
+        if self.opts.address < 0:
+            print("um, you need to say which address has the tagging plz")
+            os.exit(1)
+        if self.opts.address != packet.get_address():
+            return
+
+        #print('Instrumentation (address = %u, value = %x, size = %u bytes)' % (
+        #    packet.get_address(), packet.get_value(), packet.get_size() - 1))
+        tag = packet.get_value() >> 24
+        ts = packet.get_value() & 0xffffff
+        task = self.tasks.get(tag, None)
+        if not task:
+            task = KTask(tag)
+            self.tasks[tag] = task
+        task.add(ts)
+
+    def summary(self):
+        if len(self.tasks) == 0:
+            print("Haven't seen any tags yet...")
+            return
+        print(f"monitoring saw {len(self.tasks)}")
+        sum_time_total = sum([t.time_total for tag,t in self.tasks.items()])
+        sum_time_recent = sum([t.time_recent for tag,t in self.tasks.items()])
+        print(f"total time: {sum_time_total} recent time: {sum_time_recent}")
+        for tag,t in self.tasks.items():
+            pct_total = t.time_total / sum_time_total * 100
+            pct_recent = t.time_recent / sum_time_recent * 100
+            print(f"{t} occupied recent: {pct_recent:>5.2f}% all time: {pct_total:>5.2f}%")
+            t.reset()
+
+    def report(self):
+        now = millis()
+        if now - self.last_report > self.opts.report_interval:
+            self.summary()
+            self.last_report = now
+        
+
+
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('file', type=argparse.FileType('rb', 0), help="swo binary output file to parse", default="-")
     ap.add_argument("--address", "-a", type=int, default=-1, help="which channels to print, -1 for all")
     ap.add_argument("--follow", "-f", action="store_true", help="Seek to the 1024 bytes before the end of file first!", default=False)
+    ap.add_argument("--report_interval", type=int, default=1000, help="How often to dump summary reporting")
     opts = ap.parse_args()
 
     try:
         with opts.file as input_file:
-            decoder = Decoder(2 * BUFFER_SIZE, opts)
+            decoder = KFreeRtosDecoder(opts)
             if opts.follow:
                 input_file.seek(0, os.SEEK_END)
                 size = input_file.tell()
@@ -212,6 +299,8 @@ if __name__ == '__main__':
                 except BaseException as e:
                     print(e, file=sys.stderr)
                     break
+
+                decoder.report()
 
             input_file.close()
 
