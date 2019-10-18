@@ -265,7 +265,7 @@ class KFreeRtosDecoder(Decoder):
             sum_time_total /= self.opts.nominal_clock
             sum_time_recent /= self.opts.nominal_clock
         print(f"total time: {sum_time_total} recent time: {sum_time_recent}")
-        for tag,t in self.tasks.items():
+        for tag,t in sorted(self.tasks.items()):
             pct_total = t.time_total / sum_time_total * 100
             pct_recent = t.time_recent / sum_time_recent * 100
             if self.opts.wallclock:
