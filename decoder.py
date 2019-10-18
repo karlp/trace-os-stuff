@@ -229,26 +229,13 @@ class KFreeRtosDecoder(Decoder):
         super().__init__(opts)
         self.tasks = {}
         self.last_report = millis()
-        self.active_task = None
 
-    def handle_entry(self, tag):
-        if self.active_task:
-            print("oops? re-entered with an existing task?")
+    def handle_exit(self, tag, ts):
         task = self.tasks.get(tag, None)
         if not task:
             task = KTask(tag, self.opts)
             self.tasks[tag] = task
-        self.active_task = task
-
-    def handle_exit(self, tag, ts):
-        if self.active_task:
-            if self.active_task.tag == tag:
-                self.active_task.add(ts)
-            else:
-                print("exited from a different tag?")
-        else:
-            print("oops? exited without an existing task?")
-        self.active_task = None
+        task.add(ts)
 
     def _handle_inst_packet(self, packet):
         if self.opts.address < 0:
@@ -263,9 +250,6 @@ class KFreeRtosDecoder(Decoder):
             tag = (packet.get_value() >> 24) & 0x1f
             ts = packet.get_value() & 0xffffff
             self.handle_exit(tag, ts)
-        elif packet.get_size() == 2 and (packet.get_value() & 0x80):
-            tag = packet.get_value() & 0x1f
-            self.handle_entry(tag)
         else:
             print(f"unexpected/badly formatted trace packet: address: {packet.get_address()}, value: {packet.get_value()}, size: {packet.get_size() - 1 }")
 
