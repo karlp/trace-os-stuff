@@ -7,26 +7,26 @@ Expects to have a freertos trace macro along the lines of
 ```
 /* in your freertosconfig.h */
 #define traceTASK_SWITCHED_IN() frt_enter()
+#define traceTASK_SWITCHED_OUT() frt_exit()
 
 
 /* elsewhere */
 #define STIM 31
-static inline int get_tid(void) {
-	return xTaskGetApplicationTaskTagFromISR(NULL);
-}
-static volatile uint32_t last_enter;
 
 void frt_enter(void)
 {
-	uint32_t x = (get_tid() & 0xff) << 24;
-	uint32_t prev = last_enter;
+	last_tid = (int)xTaskGetApplicationTaskTagFromISR(NULL) & 0x1f;
 	last_enter = DWT_CYCCNT;
-	x |= ((last_enter - prev) & 0xffffff);
-	trace_send32(STIM, x);
 }
 
+void frt_exit(void)
+{
+	uint32_t delta = DWT_CYCCNT - last_enter;
+	uint8_t top = 1<<7 | last_tid;
+	trace_send32(STIM, (top << 24) | (delta & 0xffffff));
+}
 
-/* in your task setup */
+	/* in your task setup, set a task tag with a threadid. you have five bits */
 	xTaskCreate(task_1, "profilign", configMINIMAL_STACK_SIZE, &state, tskIDLE_PRIORITY + 2, &xHandle);
 	vTaskSetApplicationTaskTag(xHandle, ++threadid);
 	xTaskCreate(task_2, "is_rad", configMINIMAL_STACK_SIZE, &state, tskIDLE_PRIORITY + 1, &xHandle);
@@ -38,28 +38,33 @@ void frt_enter(void)
 
 ```
 
-## Example output
+## Example output (with --wallclock option)
+Task 0 is the idle task.
+Cnt is the count total/since last report.
+avg/ravg is the lifetime average length, since last report average.
+likewise, % recent is since last report
 ```
 monitoring saw 5
-total time: 1071014386 recent time: 29087019
-Task<0>(cnt:    1928/  111	avg: 333653.40	ravg: 199798.68) occupied recent: 76.25% all time: 60.06%
-Task<1>(cnt:     335/   10	avg:1067074.50	ravg: 678340.10) occupied recent: 23.32% all time: 33.38%
-Task<3>(cnt:      33/    0	avg:1042972.76	ravg:      0.00) occupied recent:  0.00% all time:  3.21%
-Task<2>(cnt:      66/    1	avg: 520212.89	ravg: 125965.00) occupied recent:  0.43% all time:  3.21%
-Task<4>(cnt:      27/    0	avg:  55870.96	ravg:      0.00) occupied recent:  0.00% all time:  0.14%
+total time: 28.69913403125 recent time: 0.999758
+Task<1>(cnt:     575/   20 avg: 0.06ms ravg: 0.06ms) occupied recent:  0.11% all time:  0.11%
+Task<0>(cnt:     461/   16 avg:31.33ms ravg:31.16ms) occupied recent: 49.86% all time: 50.32%
+Task<2>(cnt:     288/   10 avg: 0.09ms ravg: 0.09ms) occupied recent:  0.09% all time:  0.09%
+Task<3>(cnt:     485/   17 avg:29.28ms ravg:29.37ms) occupied recent: 49.94% all time: 49.48%
+Task<4>(cnt:      29/    1 avg: 0.02ms ravg: 0.02ms) occupied recent:  0.00% all time:  0.00%
 monitoring saw 5
-total time: 1103297043 recent time: 32282657
-Task<0>(cnt:    2052/  124	avg: 325492.93	ravg: 198610.75) occupied recent: 76.29% all time: 60.54%
-Task<1>(cnt:     345/   10	avg:1051343.70	ravg: 524361.80) occupied recent: 16.24% all time: 32.88%
-Task<3>(cnt:      34/    1	avg:1052938.50	ravg:1381808.00) occupied recent:  4.28% all time:  3.24%
-Task<2>(cnt:      68/    2	avg: 520052.19	ravg: 514749.00) occupied recent:  3.19% all time:  3.21%
-Task<4>(cnt:      27/    0	avg:  55870.96	ravg:      0.00) occupied recent:  0.00% all time:  0.14%
+total time: 29.74285353125 recent time: 1.0437195
+Task<1>(cnt:     596/   21 avg: 0.06ms ravg: 0.06ms) occupied recent:  0.11% all time:  0.11%
+Task<0>(cnt:     477/   16 avg:31.32ms ravg:31.16ms) occupied recent: 47.76% all time: 50.23%
+Task<2>(cnt:     298/   10 avg: 0.09ms ravg: 0.09ms) occupied recent:  0.08% all time:  0.09%
+Task<3>(cnt:     503/   18 avg:29.31ms ravg:30.17ms) occupied recent: 52.04% all time: 49.57%
+Task<4>(cnt:      30/    1 avg: 0.02ms ravg: 0.02ms) occupied recent:  0.00% all time:  0.00%
 monitoring saw 5
-total time: 1136066929 recent time: 32769886
-Task<0>(cnt:    2182/  130	avg: 318108.39	ravg: 201546.25) occupied recent: 79.95% all time: 61.10%
-Task<1>(cnt:     355/   10	avg:1037584.03	ravg: 562875.20) occupied recent: 17.18% all time: 32.42%
-Task<3>(cnt:      35/    1	avg:1041317.91	ravg: 646218.00) occupied recent:  1.97% all time:  3.21%
-Task<2>(cnt:      70/    2	avg: 509392.19	ravg: 146952.00) occupied recent:  0.90% all time:  3.14%
-Task<4>(cnt:      27/    0	avg:  55870.96	ravg:      0.00) occupied recent:  0.00% all time:  0.13%
+total time: 30.74261153125 recent time: 0.999758
+Task<1>(cnt:     616/   20 avg: 0.06ms ravg: 0.06ms) occupied recent:  0.11% all time:  0.11%
+Task<0>(cnt:     493/   16 avg:31.32ms ravg:31.16ms) occupied recent: 49.87% all time: 50.22%
+Task<2>(cnt:     308/   10 avg: 0.09ms ravg: 0.09ms) occupied recent:  0.09% all time:  0.09%
+Task<3>(cnt:     520/   17 avg:29.31ms ravg:29.36ms) occupied recent: 49.93% all time: 49.58%
+Task<4>(cnt:      31/    1 avg: 0.02ms ravg: 0.02ms) occupied recent:  0.00% all time:  0.00%
+
 ```
 
