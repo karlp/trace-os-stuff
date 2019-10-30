@@ -264,9 +264,12 @@ class KFreeRtosDecoder(Decoder):
         if len(self.tasks) == 0:
             print("Haven't seen any tags yet...")
             return
-        print(f"monitoring saw {len(self.tasks)}")
         sum_time_total = sum([t.time_total for tag,t in self.tasks.items()])
         sum_time_recent = sum([t.time_recent for tag,t in self.tasks.items()])
+        if not sum_time_recent:
+            print("No trace tags for %.1f secs" % ((millis() - self.last_good_report) / 1000))
+            return
+        self.last_good_report = millis()
         if self.opts.wallclock:
             sum_time_total /= self.opts.nominal_clock
             sum_time_recent /= self.opts.nominal_clock
