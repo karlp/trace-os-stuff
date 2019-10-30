@@ -253,6 +253,12 @@ class KFreeRtosDecoder(Decoder):
         else:
             print(f"unexpected/badly formatted trace packet: address: {packet.get_address()}, value: {packet.get_value()}, size: {packet.get_size() - 1 }")
 
+    def _handle_pc_sample_packet(self, packet):
+        # shush, we might be doing both of these at the same time.
+        pass
+    def _handle_ext_packet(self, packet):
+        pass
+
 
     def summary(self):
         if len(self.tasks) == 0:
